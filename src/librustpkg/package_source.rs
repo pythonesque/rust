@@ -23,7 +23,7 @@ use path_util::{find_dir_using_rust_path_hack, make_dir_rwx_recursive, default_w
 use path_util::{target_build_dir, versionize, dir_has_crate_file};
 use util::{compile_crate, DepMap};
 use workcache_support;
-use workcache_support::crate_tag;
+use workcache_support::{digest_only_date, digest_file_with_date, crate_tag};
 use extra::workcache;
 use extra::treemap::TreeMap;
 
@@ -390,7 +390,8 @@ impl PkgSrc {
                     deps: &mut DepMap,
                     crates: &[Crate],
                     cfgs: &[~str],
-                    what: OutputType) {
+                    what: OutputType,
+                    inputs_to_discover: &[(~str, Path)]) {
         for crate in crates.iter() {
             let path = self.start_dir.join(&crate.file);
             debug2!("build_crates: compiling {}", path.display());
@@ -408,7 +409,18 @@ impl PkgSrc {
                 let sub_dir = self.build_workspace().clone();
                 let sub_flags = crate.flags.clone();
                 let sub_deps = deps.clone();
+                let inputs = inputs_to_discover.map(|&(ref k, ref p)| (k.clone(), p.to_str()));
                 do prep.exec |exec| {
+                    for &(ref kind, ref p) in inputs.iter() {
+                        let pth = Path(*p);
+                        exec.discover_input(*kind, *p, if *kind == ~"file" {
+                                digest_file_with_date(&pth)
+                            } else if *kind == ~"binary" {
+                                digest_only_date(&Path(*p))
+                            } else {
+                                fail2!("Bad kind in build_crates")
+                            });
+                    }
                     let result = compile_crate(&subcx,
                                                exec,
                                                &id,
@@ -452,23 +464,43 @@ impl PkgSrc {
                  build_context: &BuildContext,
                  // DepMap is a map from str (crate name) to (kind, name) --
                  // it tracks discovered dependencies per-crate
-                 cfgs: ~[~str]) -> DepMap {
+                 cfgs: ~[~str]){
+                 inputs_to_discover: &[(~str, Path)]) -> DepMap {
         let mut deps = TreeMap::new();
-
         let libs = self.libs.clone();
         let mains = self.mains.clone();
         let tests = self.tests.clone();
         let benchs = self.benchs.clone();
         debug2!("Building libs in {}, destination = {}",
-               self.source_workspace.display(), self.build_workspace().display());
-        self.build_crates(build_context, &mut deps, libs, cfgs, Lib);
+               self.destination_workspace.to_str(),
+               self.destination_workspace.to_str());
+        self.build_crates(build_context,
+                          &mut deps,
+                          libs,
+                          cfgs,
+                          Lib,
+                          inputs_to_discover);
         debug2!("Building mains");
-        self.build_crates(build_context, &mut deps, mains, cfgs, Main);
+        self.build_crates(build_context,
+                          &mut deps,
+                          mains,
+                          cfgs,
+                          Main,
+                          inputs_to_discover);
         debug2!("Building tests");
-        self.build_crates(build_context, &mut deps, tests, cfgs, Test);
+        self.build_crates(build_context,
+                          &mut deps,
+                          tests,
+                          cfgs,
+                          Test,
+                          inputs_to_discover);
         debug2!("Building benches");
-        self.build_crates(build_context, &mut deps, benchs, cfgs, Bench);
-        deps
+        self.build_crates(build_context,
+                          &mut deps,
+                          benchs,
+                          cfgs,
+                          Bench,
+                          inputs_to_discover);
     }
 
     /// Return the workspace to put temporary files in. See the comment on `PkgSrc`

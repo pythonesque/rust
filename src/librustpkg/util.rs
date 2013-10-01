@@ -27,11 +27,13 @@ use context::{in_target, StopBefore, Link, Assemble, BuildContext};
 use package_id::PkgId;
 use package_source::PkgSrc;
 use workspace::pkg_parent_workspaces;
-use path_util::{U_RWX, system_library, target_build_dir};
+use path_util::{system_library, target_build_dir};
 use path_util::{default_workspace, built_library_in_workspace};
 pub use target::{OutputType, Main, Lib, Bench, Test, JustOne, lib_name_of, lib_crate_filename};
 pub use target::{Target, Build, Install};
 use extra::treemap::TreeMap;
+use path_util::U_RWX;
+pub use target::{lib_name_of, lib_crate_filename, WhatToBuild, MaybeCustom};
 use workcache_support::{digest_file_with_date, digest_only_date};
 
 // It would be nice to have the list of commands in just one place -- for example,
@@ -238,7 +240,7 @@ pub fn compile_input(context: &BuildContext,
         optimize: if opt { session::Aggressive } else { session::No },
         test: what == Test || what == Bench,
         maybe_sysroot: Some(sysroot_to_use),
-        addl_lib_search_paths: @mut (~[]),
+        addl_lib_search_paths: @mut context.additional_library_paths(),
         output_type: output_type,
         .. (*driver::build_session_options(binary,
                                            &matches,
@@ -334,7 +336,7 @@ pub fn compile_input(context: &BuildContext,
 // also, too many arguments
 // Returns list of discovered dependencies
 pub fn compile_crate_from_input(input: &Path,
-                                exec: &mut workcache::Exec,
+                                _exec: &mut workcache::Exec,
                                 stop_before: StopBefore,
  // should be of the form <workspace>/build/<pkg id's path>
                                 out_dir: &Path,
@@ -377,7 +379,6 @@ pub fn compile_crate_from_input(input: &Path,
 
     debug2!("Built {}, date = {:?}", outputs.out_filename.display(),
            datestamp(&outputs.out_filename));
-
     Some(outputs.out_filename)
 }
 
@@ -478,7 +479,8 @@ impl<'self> Visitor<()> for ViewItemVisitor<'self> {
                                                   self.context.context.use_rust_path_hack,
                                                   pkg_id.clone());
                         let (outputs_disc, inputs_disc) =
-                            self.context.install(pkg_src, &JustOne(Path::new(lib_crate_filename)));
+                            self.context.install(pkg_src, &WhatToBuild::new(MaybeCustom,
+                                JustOne(Path(lib_crate_filename))));
                         debug2!("Installed {}, returned {:?} dependencies and \
                                {:?} transitive dependencies",
                                lib_name, outputs_disc.len(), inputs_disc.len());

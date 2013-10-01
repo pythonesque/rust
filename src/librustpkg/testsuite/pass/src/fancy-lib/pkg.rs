@@ -15,22 +15,19 @@ use std::{io, os};
 use rustpkg::api;
 use rustpkg::version::NoVersion;
 
-use rustc::metadata::filesearch;
-
 pub fn main() {
-    use std::libc::consts::os::posix88::{S_IRUSR, S_IWUSR, S_IXUSR};
     let args = os::args();
 
 // by convention, first arg is sysroot
     if args.len() < 2 {
-        fail!("Package script requires a directory where rustc libraries live as the first \
+        fail2!("Package script requires a directory where rustc libraries live as the first \
                argument");
     }
 
     let sysroot_arg = args[1].clone();
     let sysroot = Path(sysroot_arg);
     if !os::path_exists(&sysroot) {
-        fail!("Package script requires a sysroot that exists; %s doesn't", sysroot.to_str());
+        fail2!("Package script requires a sysroot that exists;{} doesn't", sysroot.to_str());
     }
 
     if args[2] != ~"install" {
@@ -38,19 +35,12 @@ pub fn main() {
         return;
     }
 
-    let out_path = Path("build/fancy-lib");
-    if !os::path_exists(&out_path) {
-        assert!(os::make_dir(&out_path, (S_IRUSR | S_IWUSR | S_IXUSR) as i32));
-    }
+    let out_path = os::self_exe_path().expect("Couldn't get self_exe path");
 
-    let file = io::file_writer(&out_path.push("generated.rs"),
-                               [io::Create]).unwrap();
-    file.write_str("pub fn wheeeee() { for [1, 2, 3].each() |_| { assert!(true); } }");
+    let file = io::file_writer(&out_path.push("generated.rs"), [io::Create]).unwrap();
+    file.write_str("pub fn wheeeee() { let xs = [1, 2, 3]; \
+                   for _ in xs.iter() { assert!(true); } }");
 
-
-    debug!("api_____install_____lib, my sysroot:");
-    debug!(sysroot.to_str());
-
-    api::install_lib(@sysroot, os::getcwd(), ~"fancy-lib", Path("lib.rs"),
-                     NoVersion);
+    let context = api::default_context(sysroot, api::default_workspace());
+    api::install_pkg(&context, os::getcwd(), ~"fancy-lib", NoVersion, ~[]);
 }
