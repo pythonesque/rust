@@ -56,7 +56,7 @@ impl BuildContext {
     }
 
     pub fn add_library_path(&mut self, p: Path) {
-        debug2!("Adding library path: {}", p.to_str());
+        debug2!("Adding library path: {}", p.display());
         self.context.add_library_path(p);
     }
 

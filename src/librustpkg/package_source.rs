@@ -409,14 +409,15 @@ impl PkgSrc {
                 let sub_dir = self.build_workspace().clone();
                 let sub_flags = crate.flags.clone();
                 let sub_deps = deps.clone();
-                let inputs = inputs_to_discover.map(|&(ref k, ref p)| (k.clone(), p.to_str()));
+                let inputs = inputs_to_discover.map(|&(ref k, ref p)|
+                                                    (k.clone(), p.as_str().unwrap().to_owned()));
                 do prep.exec |exec| {
                     for &(ref kind, ref p) in inputs.iter() {
-                        let pth = Path(*p);
+                        let pth = Path::new(p.clone());
                         exec.discover_input(*kind, *p, if *kind == ~"file" {
                                 digest_file_with_date(&pth)
                             } else if *kind == ~"binary" {
-                                digest_only_date(&Path(*p))
+                                digest_only_date(&Path::new(p.clone()))
                             } else {
                                 fail2!("Bad kind in build_crates")
                             });
@@ -464,7 +465,7 @@ impl PkgSrc {
                  build_context: &BuildContext,
                  // DepMap is a map from str (crate name) to (kind, name) --
                  // it tracks discovered dependencies per-crate
-                 cfgs: ~[~str]){
+                 cfgs: ~[~str],
                  inputs_to_discover: &[(~str, Path)]) -> DepMap {
         let mut deps = TreeMap::new();
         let libs = self.libs.clone();
@@ -472,8 +473,8 @@ impl PkgSrc {
         let tests = self.tests.clone();
         let benchs = self.benchs.clone();
         debug2!("Building libs in {}, destination = {}",
-               self.destination_workspace.to_str(),
-               self.destination_workspace.to_str());
+               self.destination_workspace.display(),
+               self.destination_workspace.display());
         self.build_crates(build_context,
                           &mut deps,
                           libs,
@@ -501,6 +502,7 @@ impl PkgSrc {
                           cfgs,
                           Bench,
                           inputs_to_discover);
+        deps
     }
 
     /// Return the workspace to put temporary files in. See the comment on `PkgSrc`

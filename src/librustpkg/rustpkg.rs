@@ -18,6 +18,8 @@
 #[license = "MIT/ASL2"];
 #[crate_type = "lib"];
 
+#[feature(globs)];
+
 extern mod extra;
 extern mod rustc;
 extern mod syntax;
@@ -44,8 +46,8 @@ use context::{Context, BuildContext,
                        LLVMAssemble, LLVMCompileBitcode};
 use package_id::PkgId;
 use package_source::PkgSrc;
-use target::{WhatToBuild, Everything, is_lib, is_main, is_test, is_bench, Tests};
-use target::{Tests, MaybeCustom, Inferred};
+use target::{WhatToBuild, Everything, is_lib, is_main, is_test, is_bench};
+use target::{Tests, MaybeCustom, Inferred, JustOne};
 use workcache_support::digest_only_date;
 use exit_codes::{COPY_FAILED_CODE, BAD_FLAG_CODE};
 
@@ -145,13 +147,11 @@ impl<'self> PkgScript<'self> {
                                        &self.build_dir,
                                        sess,
                                        crate);
-        debug2!("Running program: {} {} {}", exe.display(),
-               sysroot.display(), "install");
         // Discover the output
         // FIXME (#9639): This needs to handle non-utf8 paths
         // Discover the output
-        exec.discover_output("binary", exe.as_str().unwrap, digest_only_date(&exe));
-        exe.to_str()
+        exec.discover_output("binary", exe.as_str().unwrap().to_owned(), digest_only_date(&exe));
+        exe.as_str().unwrap().to_owned()
     }
 
 
@@ -159,14 +159,15 @@ impl<'self> PkgScript<'self> {
     /// is the command to pass to it (e.g., "build", "clean", "install")
     /// Returns a pair of an exit code and list of configs (obtained by
     /// calling the package script's configs() function if it exists
-    fn run_custom(exe: &Path, sysroot: &Path) -> (~[~str], ExitCode) {
-        debug2!("Running program: {} {} {}", exe.to_str(),
+    fn run_custom(exe: &Path, sysroot: &Path) -> (~[~str], int) {
+        debug2!("Running program: {} {} {}", exe.as_str().unwrap().to_owned(),
                sysroot.display(), "install");
         // FIXME #7401 should support commands besides `install`
         // FIXME (#9639): This needs to handle non-utf8 paths
         let status = run::process_status(exe.as_str().unwrap(),
                                          [sysroot.as_str().unwrap().to_owned(), ~"install"]);
         if status != 0 {
+            debug2!("run_custom: first pkg command failed with {:?}", status);
             (~[], status)
         }
         else {
@@ -175,6 +176,7 @@ impl<'self> PkgScript<'self> {
             // FIXME (#9639): This needs to handle non-utf8 paths
             let output = run::process_output(exe.as_str().unwrap(),
                                              [sysroot.as_str().unwrap().to_owned(), ~"configs"]);
+            debug2!("run_custom: second pkg command did {:?}", output.status);
             // Run the configs() function to get the configs
             let cfgs = str::from_utf8_slice(output.output).word_iter()
                 .map(|w| w.to_owned()).collect();
@@ -428,6 +430,7 @@ impl CtxMethods for BuildContext {
                 pkgid = {} pkgsrc start_dir = {}", workspace.display(),
                in_rust_path(&workspace), is_git_dir(&workspace.join(&pkgid.path)),
                pkgid.to_str(), pkg_src.start_dir.display());
+        debug2!("build: what to build = {:?}", what_to_build);
 
         // If workspace isn't in the RUST_PATH, and it's a git repo,
         // then clone it into the first entry in RUST_PATH, and repeat
@@ -461,23 +464,10 @@ impl CtxMethods for BuildContext {
             (Some(package_script_path), MaybeCustom)  => {
                 let sysroot = self.sysroot_to_use();
                 // FIXME (#9639): This needs to handle non-utf8 paths
-                let pkg_script_path_str = package_script_path.as_str().unwrap();
-                let (cfgs, hook_result) =
-                    do self.workcache_context.with_prep(pkg_script_path_str) |prep| {
-                    let sub_sysroot = sysroot.clone();
-                    let package_script_path_clone = package_script_path.clone();
-                    let sub_ws = workspace.clone();
-                    let sub_id = pkgid.clone();
-                    declare_package_script_dependency(prep, &*pkg_src);
-                    do prep.exec |exec| {
-                        let mut pscript = PkgScript::parse(@sub_sysroot.clone(),
-                                                          package_script_path_clone.clone(),
-                                                          &sub_ws,
-                                                          &sub_id);
-
+                // let pkg_script_path_str = package_script_path.as_str().unwrap();
                 // Build the package script if needed
                 let script_build = format!("build_package_script({})",
-                                           package_script_path.to_str());
+                                           package_script_path.display());
                 let pkg_exe = do self.workcache_context.with_prep(script_build) |prep| {
                     let subsysroot = sysroot.clone();
                     let psp = package_script_path.clone();
@@ -492,7 +482,7 @@ impl CtxMethods for BuildContext {
                     }
                 };
                 // We always *run* the package script
-                let (cfgs, hook_result) = PkgScript::run_custom(&Path(pkg_exe), &sysroot);
+                let (cfgs, hook_result) = PkgScript::run_custom(&Path::new(pkg_exe), &sysroot);
                 debug2!("Command return code = {:?}", hook_result);
                 if hook_result != 0 {
                     fail2!("Error running custom build command")
@@ -518,7 +508,7 @@ impl CtxMethods for BuildContext {
                 // Find crates inside the workspace
                 Everything => pkg_src.find_crates(),
                 // Find only tests
-                &Tests => pkg_src.find_crates_with_filter(|s| { is_test(&Path::new(s)) }),
+                Tests => pkg_src.find_crates_with_filter(|s| { is_test(&Path::new(s)) }),
                 // Don't infer any crates -- just build the one that was requested
                 JustOne(ref p) => {
                     // We expect that p is relative to the package source's start directory,
@@ -578,6 +568,8 @@ impl CtxMethods for BuildContext {
         // workcache only knows about *crates*. Building a package
         // just means inferring all the crates in it, then building each one.
         self.build(&mut pkg_src, what);
+
+        debug2!("Done building package source {}", pkg_src.to_str());
 
         let to_do = ~[pkg_src.libs.clone(), pkg_src.mains.clone(),
                       pkg_src.tests.clone(), pkg_src.benchs.clone()];

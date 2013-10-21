@@ -27,12 +27,12 @@ pub fn main() {
     }
 
     let path_for_db = api::default_workspace();
-    debug2!("path_for_db = {}", path_for_db.to_str());
+    debug2!("path_for_db = {}", path_for_db.display());
 
     let sysroot_arg = args[1].clone();
-    let sysroot = Path(sysroot_arg);
+    let sysroot = Path::new(sysroot_arg);
     if !os::path_exists(&sysroot) {
-        fail2!("Package script requires a sysroot that exists; {} doesn't", sysroot.to_str());
+        fail2!("Package script requires a sysroot that exists; {} doesn't", sysroot.display());
     }
 
     if args[2] != ~"install" {
@@ -42,12 +42,14 @@ pub fn main() {
 
     let mut context = api::default_context(sysroot, path_for_db);
     let my_workspace = api::my_workspace(&context.context, "cdep");
-    let foo_c_name = my_workspace.push_many(["src", "cdep-0.1", "foo.c"]);
+    let foo_c_name = my_workspace.join_many(["src", "cdep-0.1", "foo.c"]);
 
     let out_lib_path = do context.workcache_context.with_prep("foo.c") |prep| {
         let sub_cx = context.context.clone();
-        debug2!("foo_c_name = {}", foo_c_name.to_str());
-        prep.declare_input("file", foo_c_name.to_str(), digest_file_with_date(&foo_c_name));
+        debug2!("foo_c_name = {}", foo_c_name.display());
+        prep.declare_input("file",
+                           foo_c_name.as_str().unwrap().to_owned(),
+                           digest_file_with_date(&foo_c_name));
         let out_path = do prep.exec |exec| {
             let out_path = api::build_library_in_workspace(exec,
                                                            &mut sub_cx.clone(),
@@ -56,13 +58,13 @@ pub fn main() {
                                                            [~"-c"],
                                                            [~"foo.c"],
                                                            "foo");
-            let out_p = Path(out_path);
-            out_p.to_str()
+            let out_p = Path::new(out_path);
+            out_p.as_str().unwrap().to_owned()
         };
-        out_path.to_str()
+        out_path
     };
-    let out_lib_path = Path(out_lib_path);
-    debug2!("out_lib_path = {}", out_lib_path.to_str());
+    let out_lib_path = Path::new(out_lib_path);
+    debug2!("out_lib_path = {}", out_lib_path.display());
     context.add_library_path(out_lib_path.dir_path());
 
     let context_clone = context.clone();

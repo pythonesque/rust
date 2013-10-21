@@ -134,21 +134,28 @@ pub fn build_library_in_workspace(exec: &mut workcache::Exec,
 
     let workspace = my_workspace(context, package_name);
     let workspace_build_dir = target_build_dir(&workspace);
-    let out_name = workspace_build_dir.push_many([package_name.to_str(),
+    let out_name = workspace_build_dir.join_many([package_name.to_str(),
                                                   platform_library_name(output)]);
     // make paths absolute
     let pkgid = PkgId::new(package_name);
-    let absolute_paths = paths.map(|s|
-           workspace.push_many([~"src", pkgid.to_str(), s.to_owned()]).to_str());
-    let all_args = flags + absolute_paths + ~[~"-o", out_name.to_str()];
+    let absolute_paths = paths.map(|s| {
+            let whatever = workspace.join_many([~"src",
+                                pkgid.to_str(),
+                                s.to_owned()]);
+            whatever.as_str().unwrap().to_owned()
+        });
+    let all_args = flags + absolute_paths + ~[~"-o", out_name.as_str().unwrap().to_owned()];
     let exit_code = run::process_status(tool, all_args);
     if exit_code != 0 {
         command_failed.raise((tool.to_owned(), all_args, exit_code))
     }
     else {
-        exec.discover_output("binary", out_name.to_str(), digest_only_date(&out_name));
+        let out_name_str = out_name.as_str().unwrap().to_owned();
+        exec.discover_output("binary",
+                             out_name_str,
+                             digest_only_date(&out_name));
         context.add_library_path(out_name.dir_path());
-        out_name.to_str()
+        out_name_str
     }
 }
 
@@ -159,7 +166,7 @@ pub fn my_workspace(context: &Context, package_name: &str) -> Path {
     let pkgid = PkgId::new(package_name);
     let workspaces = pkg_parent_workspaces(context, &pkgid);
     if workspaces.is_empty() {
-        bad_pkg_id.raise((Path(package_name), package_name.to_owned()));
+        bad_pkg_id.raise((Path::new(package_name), package_name.to_owned()));
     }
     workspaces[0]
 }

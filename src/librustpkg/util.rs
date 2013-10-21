@@ -33,7 +33,7 @@ pub use target::{OutputType, Main, Lib, Bench, Test, JustOne, lib_name_of, lib_c
 pub use target::{Target, Build, Install};
 use extra::treemap::TreeMap;
 use path_util::U_RWX;
-pub use target::{lib_name_of, lib_crate_filename, WhatToBuild, MaybeCustom};
+pub use target::{lib_name_of, lib_crate_filename, WhatToBuild, MaybeCustom, Inferred};
 use workcache_support::{digest_file_with_date, digest_only_date};
 
 // It would be nice to have the list of commands in just one place -- for example,
@@ -235,6 +235,8 @@ pub fn compile_input(context: &BuildContext,
         Nothing => link::output_type_exe
     };
 
+    debug2!("Output type = {:?}", output_type);
+
     let options = @session::options {
         crate_type: crate_type,
         optimize: if opt { session::Aggressive } else { session::No },
@@ -248,6 +250,8 @@ pub fn compile_input(context: &BuildContext,
                                             @diagnostic::Emitter)).clone()
     };
 
+    debug2!("Created options...");
+
     let addl_lib_search_paths = @mut options.addl_lib_search_paths;
     // Make sure all the library directories actually exist, since the linker will complain
     // otherwise
@@ -260,15 +264,21 @@ pub fn compile_input(context: &BuildContext,
         }
     }
 
+    debug2!("About to build session...");
+
     let sess = driver::build_session(options,
                                      @diagnostic::DefaultEmitter as
                                         @diagnostic::Emitter);
+
+    debug2!("About to build config...");
 
     // Infer dependencies that rustpkg needs to build, by scanning for
     // `extern mod` directives.
     let cfg = driver::build_configuration(sess);
     let mut crate = driver::phase_1_parse_input(sess, cfg.clone(), &input);
     crate = driver::phase_2_configure_and_expand(sess, cfg.clone(), crate);
+
+    debug2!("About to call find_and_install_dependencies...");
 
     find_and_install_dependencies(context, pkg_id, in_file, sess, exec, &crate, deps,
                                   |p| {
@@ -336,7 +346,7 @@ pub fn compile_input(context: &BuildContext,
 // also, too many arguments
 // Returns list of discovered dependencies
 pub fn compile_crate_from_input(input: &Path,
-                                _exec: &mut workcache::Exec,
+                                exec: &mut workcache::Exec,
                                 stop_before: StopBefore,
  // should be of the form <workspace>/build/<pkg id's path>
                                 out_dir: &Path,
@@ -432,7 +442,9 @@ impl<'self> Visitor<()> for ViewItemVisitor<'self> {
                 };
                 debug2!("Finding and installing... {}", lib_name);
                 // Check standard Rust library path first
-                match system_library(&self.context.sysroot(), lib_name) {
+                let whatever = system_library(&self.context.sysroot(), lib_name);
+                debug2!("system library returned {:?}", whatever);
+                match whatever {
                     Some(ref installed_path) => {
                         debug2!("It exists: {}", installed_path.display());
                         // Say that [path for c] has a discovered dependency on
@@ -479,8 +491,9 @@ impl<'self> Visitor<()> for ViewItemVisitor<'self> {
                                                   self.context.context.use_rust_path_hack,
                                                   pkg_id.clone());
                         let (outputs_disc, inputs_disc) =
-                            self.context.install(pkg_src, &WhatToBuild::new(MaybeCustom,
-                                JustOne(Path(lib_crate_filename))));
+                            // NOTE: this may be wrong
+                            self.context.install(pkg_src, &WhatToBuild::new(Inferred,
+                                JustOne(Path::new(lib_crate_filename))));
                         debug2!("Installed {}, returned {:?} dependencies and \
                                {:?} transitive dependencies",
                                lib_name, outputs_disc.len(), inputs_disc.len());

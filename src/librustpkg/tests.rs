@@ -897,8 +897,8 @@ fn package_script_with_default_build() {
     debug2!("dir = {}", dir.display());
     let mut source = test_sysroot().dir_path();
     source.pop(); source.pop();
-    debug2!("dir = {}", dir.to_str());
-    let source = Path(file!()).pop().push_many(
+    debug2!("dir = {}", dir.display());
+    let source = Path::new(file!()).dir_path().join_many(
         [~"testsuite", ~"pass", ~"src", ~"fancy-lib", ~"pkg.rs"]);
     debug2!("package_script_with_default_build: {}", source.display());
     if !os::copy_file(&source,
@@ -906,10 +906,10 @@ fn package_script_with_default_build() {
         fail2!("Couldn't copy file");
     }
     command_line_test([~"install", ~"fancy-lib"], dir);
-    assert_lib_exists(dir, &Path("fancy-lib"), NoVersion);
+    assert_lib_exists(dir, &Path::new("fancy-lib"), NoVersion);
     assert!(os::path_exists(&target_build_dir(dir).join_many([~"fancy-lib", ~"generated.rs"])));
     let generated_path = target_build_dir(dir).join_many([~"fancy-lib", ~"generated.rs"]);
-    debug2!("generated path = {}", generated_path.to_str());
+    debug2!("generated path = {}", generated_path.display());
     assert!(os::path_exists(&generated_path));
 }
 
@@ -2257,23 +2257,23 @@ fn test_c_dependency_ok() {
 
     let dir = create_local_package(&PkgId::new("cdep"));
     let dir = dir.path();
-    writeFile(&dir.push_many(["src", "cdep-0.1", "main.rs"]),
+    writeFile(&dir.join_many(["src", "cdep-0.1", "main.rs"]),
               "#[link_args = \"-lfoo\"]\nextern { fn f(); } \
               \n#[fixed_stack_segment]\nfn main() { unsafe { f(); } }");
-    writeFile(&dir.push_many(["src", "cdep-0.1", "foo.c"]), "void f() {}");
+    writeFile(&dir.join_many(["src", "cdep-0.1", "foo.c"]), "void f() {}");
 
-    debug2!("dir = {}", dir.to_str());
-    let source = Path(file!()).pop().push_many(
+    debug2!("dir = {}", dir.display());
+    let source = Path::new(file!()).dir_path().join_many(
         [~"testsuite", ~"pass", ~"src", ~"c-dependencies", ~"pkg.rs"]);
     if !os::copy_file(&source,
-                      &dir.push_many([~"src", ~"cdep-0.1", ~"pkg.rs"])) {
+                      &dir.join_many([~"src", ~"cdep-0.1", ~"pkg.rs"])) {
         fail2!("Couldn't copy file");
     }
     command_line_test([~"build", ~"cdep"], dir);
     assert_executable_exists(dir, "cdep");
-    let out_dir = target_build_dir(dir).push("cdep");
-    let c_library_path = out_dir.push(platform_library_name("foo"));
-    debug2!("c library path: {}", c_library_path.to_str());
+    let out_dir = target_build_dir(dir).join("cdep");
+    let c_library_path = out_dir.join(platform_library_name("foo"));
+    debug2!("c library path: {}", c_library_path.display());
     assert!(os::path_exists(&c_library_path));
 }
 
@@ -2281,23 +2281,23 @@ fn test_c_dependency_ok() {
 fn test_c_dependency_no_rebuilding() {
     let dir = create_local_package(&PkgId::new("cdep"));
     let dir = dir.path();
-    writeFile(&dir.push_many(["src", "cdep-0.1", "main.rs"]),
+    writeFile(&dir.join_many(["src", "cdep-0.1", "main.rs"]),
               "#[link_args = \"-lfoo\"]\nextern { fn f(); } \
               \n#[fixed_stack_segment]\nfn main() { unsafe { f(); } }");
-    writeFile(&dir.push_many(["src", "cdep-0.1", "foo.c"]), "void f() {}");
+    writeFile(&dir.join_many(["src", "cdep-0.1", "foo.c"]), "void f() {}");
 
-    debug2!("dir = {}", dir.to_str());
-    let source = Path(file!()).pop().push_many(
+    debug2!("dir = {}", dir.display());
+    let source = Path::new(file!()).dir_path().join_many(
         [~"testsuite", ~"pass", ~"src", ~"c-dependencies", ~"pkg.rs"]);
     if !os::copy_file(&source,
-                      &dir.push_many([~"src", ~"cdep-0.1", ~"pkg.rs"])) {
+                      &dir.join_many([~"src", ~"cdep-0.1", ~"pkg.rs"])) {
         fail2!("Couldn't copy file");
     }
     command_line_test([~"build", ~"cdep"], dir);
     assert_executable_exists(dir, "cdep");
-    let out_dir = target_build_dir(dir).push("cdep");
-    let c_library_path = out_dir.push(platform_library_name("foo"));
-    debug2!("c library path: {}", c_library_path.to_str());
+    let out_dir = target_build_dir(dir).join("cdep");
+    let c_library_path = out_dir.join(platform_library_name("foo"));
+    debug2!("c library path: {}", c_library_path.display());
     assert!(os::path_exists(&c_library_path));
 
     // Now, make it read-only so rebuilding will fail
@@ -2312,28 +2312,27 @@ fn test_c_dependency_no_rebuilding() {
 }
 
 #[test]
-#[ignore(cfg(unix,not(target_os = "macos")), reason = "See #9441")]
 fn test_c_dependency_yes_rebuilding() {
     let dir = create_local_package(&PkgId::new("cdep"));
     let dir = dir.path();
-    writeFile(&dir.push_many(["src", "cdep-0.1", "main.rs"]),
+    writeFile(&dir.join_many(["src", "cdep-0.1", "main.rs"]),
               "#[link_args = \"-lfoo\"]\nextern { fn f(); } \
               \n#[fixed_stack_segment]\nfn main() { unsafe { f(); } }");
-    let c_file_name = dir.push_many(["src", "cdep-0.1", "foo.c"]);
+    let c_file_name = dir.join_many(["src", "cdep-0.1", "foo.c"]);
     writeFile(&c_file_name, "void f() {}");
 
-    let source = Path(file!()).pop().push_many(
+    let source = Path::new(file!()).dir_path().join_many(
         [~"testsuite", ~"pass", ~"src", ~"c-dependencies", ~"pkg.rs"]);
-    let target = dir.push_many([~"src", ~"cdep-0.1", ~"pkg.rs"]);
-    debug2!("Copying {} -> {}", source.to_str(), target.to_str());
+    let target = dir.join_many([~"src", ~"cdep-0.1", ~"pkg.rs"]);
+    debug2!("Copying {} -> {}", source.display(), target.display());
     if !os::copy_file(&source, &target) {
         fail2!("Couldn't copy file");
     }
     command_line_test([~"build", ~"cdep"], dir);
     assert_executable_exists(dir, "cdep");
-    let out_dir = target_build_dir(dir).push("cdep");
-    let c_library_path = out_dir.push(platform_library_name("foo"));
-    debug2!("c library path: {}", c_library_path.to_str());
+    let out_dir = target_build_dir(dir).join("cdep");
+    let c_library_path = out_dir.join(platform_library_name("foo"));
+    debug2!("c library path: {}", c_library_path.display());
     assert!(os::path_exists(&c_library_path));
 
     // Now, make the Rust library read-only so rebuilding will fail
